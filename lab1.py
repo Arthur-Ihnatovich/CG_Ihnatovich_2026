@@ -102,6 +102,7 @@ class ColorApp:
         self.updating = False
 
         self.r, self.g, self.b = 255, 0, 0
+        self.c_val, self.m_val, self.y_val, self.k_val = 0.0, 100.0, 100.0, 0.0
 
         self.color_box = tk.Label(window, text="", font=("Verdana", 14, "bold"), width=40, height=3)
         self.color_box.pack(pady=(35, 6))
@@ -200,6 +201,10 @@ class ColorApp:
         result = colorchooser.askcolor(title="Выберите цвет")
         if result[0] is not None:  # None означает, что нажали "Отмена"
             self.r, self.g, self.b = result[0]
+
+            c, m, y, k = rgb_to_cmyk(self.r/255, self.g/255, self.b/255)
+            self.c_val, self.m_val, self.y_val, self.k_val = c * 100, m * 100, y * 100, k * 100
+
             self.update_all()
 
     def read_widgets(self, widgets, source):
@@ -236,23 +241,30 @@ class ColorApp:
         try:
             if model == "rgb":
                 self.r, self.g, self.b = self.read_widgets(self.rgb_widgets, source)
+                # Пересчитываем CMYK под новый RGB
+                c, m, y, k = rgb_to_cmyk(self.r/255, self.g/255, self.b/255)
+                self.c_val, self.m_val, self.y_val, self.k_val = c * 100, m * 100, y * 100, k * 100
 
             elif model == "cmyk":
-                c, m, y, k = self.read_widgets(self.cmyk_widgets, source)
-                r, g, b = cmyk_to_rgb(c / 100, m / 100, y / 100, k / 100)
+                # Читаем и сохраняем значения из полей CMYK
+                self.c_val, self.m_val, self.y_val, self.k_val = self.read_widgets(self.cmyk_widgets, source)
+                # Переводим CMYK в RGB
+                r, g, b = cmyk_to_rgb(self.c_val/100, self.m_val/100, self.y_val/100, self.k_val/100)
                 self.r, self.g, self.b = r * 255, g * 255, b * 255
 
             elif model == "hls":
                 h, l, s = self.read_widgets(self.hls_widgets, source)
                 r, g, b = hls_to_rgb(h, l / 100, s / 100)
                 self.r, self.g, self.b = r * 255, g * 255, b * 255
+                c, m, y, k = rgb_to_cmyk(self.r/255, self.g/255, self.b/255)
+                self.c_val, self.m_val, self.y_val, self.k_val = c * 100, m * 100, y * 100, k * 100
 
         except ValueError:
-            # В поле ввода не число: возвращаем во все поля прежние корректные значения
             self.update_all()
             return
 
         self.update_all(source_model=model, source_kind=source)
+
 
     def update_all(self, source_model=None, source_kind=None):
         """Берёт текущий RGB, считает из него CMYK и HLS и показывает ВСЕ модели.
@@ -273,13 +285,20 @@ class ColorApp:
 
         # Считаем значения для показа (в "экранных" единицах)
         rgb_values = [r * 255, g * 255, b * 255]
-        cmyk_values = [v * 100 for v in rgb_to_cmyk(r, g, b)]
+
+        # Используем сохраненные значения CMYK напрямую
+        cmyk_values = [self.c_val, self.m_val, self.y_val, self.k_val]
+        
         h, l, s = rgb_to_hls(r, g, b)
         hls_values = [h, l * 100, s * 100]
 
-        self.show_values(self.cmyk_widgets, cmyk_values, 1, source_kind if source_model == "cmyk" else None)
-        self.show_values(self.rgb_widgets, rgb_values, 0, source_kind if source_model == "rgb" else None)
-        self.show_values(self.hls_widgets, hls_values, 1, source_kind if source_model == "hls" else None)
+        skip_cmyk = source_kind if source_model == "cmyk" else None
+        skip_rgb = source_kind if source_model == "rgb" else None
+        skip_hls = source_kind if source_model == "hls" else None
+
+        self.show_values(self.cmyk_widgets, cmyk_values, 1, skip_cmyk)
+        self.show_values(self.rgb_widgets, rgb_values, 0, skip_rgb)
+        self.show_values(self.hls_widgets, hls_values, 1, skip_hls)
 
         self.update_color_box(rgb_values)
 
